@@ -15,6 +15,7 @@ endif
 
 # Flags for linking
 LDFLAGS := -shared
+CFLAGS += -Ilibretro-common/include
 
 # Source and build directories
 SRC_DIR := .
