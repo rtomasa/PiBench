@@ -2305,6 +2305,9 @@ enum retro_log_level
    RETRO_LOG_INFO,
    RETRO_LOG_WARN,
    RETRO_LOG_ERROR,
+   RETRO_LOG_TRACE, // Custom
+   RETRO_LOG_NONE,  // Custom
+   RETRO_LOG_FORCED,// Custom
    RETRO_LOG_DUMMY = INT_MAX
 };
 
