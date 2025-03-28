@@ -73,7 +73,7 @@ static void draw_circle(int x0, int y0, int radius, uint32_t color)
     }
 }
 
-void render_spiral(float time)
+void render_helix(float time)
 {
     // Speed control parameters
     const float GLOBAL_SPEED = 5.0f;       // Overall speed multiplier

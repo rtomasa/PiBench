@@ -130,7 +130,6 @@ float get_process_cpu_usage(void)
 void draw_text_alpha(int x, int y, const char *text, uint32_t color)
 {
     uint32_t *ptr = (uint32_t *)frame_buf;
-    int start_x = x;
     for (const char *c = text; *c; ++c)
     {
         uint8_t ch = (uint8_t)*c;

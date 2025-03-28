@@ -184,7 +184,6 @@ void retro_run(void)
     static double avg_fps = 0;
 
     // Start timing
-    uint64_t frame_start = perf.get_time_usec ? perf.get_time_usec() : 0;
     if (perf.perf_start)
         perf.perf_start(&frame_counter);
 
@@ -215,8 +214,11 @@ void retro_run(void)
     }
     else
     {
-        // draw_2d_test();
-        render_spiral(time);
+        //render_helix(time);
+        //render_radial_lines(time);
+        //render_laser(time);
+        //render_noise(time);
+        // Draw multiple cell clusters
         // Display on-screen info in top left
         draw_text_bg(32, 32, fps_str, 0xFFFFFFFF);
         draw_text_bg(32, 40, fps_avg_str, 0xFFFFFFFF);
