@@ -21,12 +21,25 @@ static float last_aspect;
 static float last_sample_rate;
 char retro_base_directory[4096];
 char retro_game_path[4096];
-static char fps_str[32] = "REAL TIME FPS: 0";
+static char fps_str[32] = "FRAMES PER SECOND (FPS): 0";
 static char fps_avg_str[32] = "AVERAGE FPS: 0";
-static char cpu_str[32] = "CPU MULTI-CORE: ---%";
-static char cpu_proc_str[32] = "CPU SINGLE-CORE: ---%";
+static char cpu_multi_str[32] = "CPU MULTI-CORE (?): ---%";
+static char cpu_single_str[32] = "CPU SINGLE-CORE: ---%";
+static char cpu_multi_avg_str[48] = "AVERAGE CPU MULTI-CORE (?): ---%";
+static char cpu_single_avg_str[48] = "AVERAGE CPU SINGLE-CORE: ---%";
 static char temp_str[32] = "CPU TEMPERATURE: ---C";
 static app_state_t current_state = STATE_MENU;
+
+static uint64_t last_log_time = 0;
+static uint64_t warm_up_counter = 0;
+static uint64_t avg_fps_counter = 0;
+static uint64_t avg_cpu_counter = 0;
+static uint64_t fps = 0;
+static double total_fps = 0;
+static double total_multi_cpu = 0;
+static double total_single_cpu = 0;
+static float start_time = 0;
+static float current_time = 0;
 
 static void fallback_log(enum retro_log_level level, const char *fmt, ...)
 {
@@ -150,14 +163,29 @@ void retro_reset(void)
 {
 }
 
+static void reset_vars()
+{
+    //last_log_time = 0;
+    warm_up_counter = 0;
+    //avg_fps_counter = 0;
+    //avg_cpu_counter = 0;
+    fps = 0;
+    //total_fps = 0;
+    //total_multi_cpu = 0;
+    //total_single_cpu = 0;
+    start_time = 0;
+    current_time = 0;
+}
+
 static void update_input(void)
 {
     input_poll_cb();
-    if (current_state == STATE_MENU)
+    if (current_state == STATE_MENU || current_state == STATE_DEMO_RESULTS)
     {
         if (input_state_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_START))
         {
-            current_state = STATE_2D_TEST;
+            reset_vars();
+            current_state = STATE_DEMO_HELIX;
         }
     }
 }
@@ -175,14 +203,40 @@ static void audio_set_state(bool enable)
     (void)enable;
 }
 
+static void draw_info(void)
+{
+    // Display on-screen info in top left
+    draw_text_bg(32, 32, fps_str, 0xFFFFFFFF);
+    draw_text_bg(32, 40, cpu_multi_str, 0xFFFFFFFF);
+    draw_text_bg(32, 48, cpu_single_str, 0xFFFFFFFF);
+    draw_text_bg(32, 56, fps_avg_str, 0xFFFFFFFF);
+    draw_text_bg(32, 64, cpu_multi_avg_str, 0xFFFFFFFF);
+    draw_text_bg(32, 72, cpu_single_avg_str, 0xFFFFFFFF);
+    draw_text_bg(32, 80, temp_str, 0xFFFFFFFF);
+}
+
+static void draw_results(void)
+{
+    const char *msg;
+    int msg_width = 0;
+    int x = VIDEO_WIDTH / 3;
+    int y = 80;
+
+    // Display on-screen info in top left
+    draw_text_bg(x, y+8, fps_avg_str, 0xFFFFFFFF);
+    draw_text_bg(x, y+16, cpu_multi_avg_str, 0xFFFFFFFF);
+    draw_text_bg(x, y+24, cpu_single_avg_str, 0xFFFFFFFF);
+    draw_text_bg(x, y+32, temp_str, 0xFFFFFFFF);
+
+    msg = "PRESS START TO RESTART SOFTWARE PERFORMANCE TEST";
+    msg_width = strlen(msg) * 8;
+    x = (VIDEO_WIDTH - msg_width) / 2;
+    y = VIDEO_HEIGHT / 2 - 4;
+    draw_text_bg(x, y, msg, 0xFFFFFFFF);
+}
+
 void retro_run(void)
 {
-    static uint64_t last_log_time = 0;
-    static uint64_t current_frames = 0;
-    static uint64_t avg_counter = 0;
-    static uint64_t warm_up_counter = 0;
-    static double avg_fps = 0;
-
     // Start timing
     if (perf.perf_start)
         perf.perf_start(&frame_counter);
@@ -192,39 +246,59 @@ void retro_run(void)
     bool updated = false;
     if (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated) && updated)
         check_variables();
-
-    // For demoscene spiral
-    static float start_time = 0;
+    
+    // Time calcs for demos
     if (start_time == 0 && perf.get_time_usec)
         start_time = perf.get_time_usec() / 1000000.0f;
 
-    float time = (perf.get_time_usec() / 1000000.0f) - start_time;
+    current_time = (perf.get_time_usec() / 1000000.0f) - start_time;
 
     // Clear screen
     memset(frame_buf, 0, VIDEO_PIXELS * sizeof(uint32_t));
 
-    if (current_state == STATE_MENU)
+    const char *msg;
+    int msg_width = 0;
+    int x = 0;
+    int y = 0;
+
+    switch (current_state)
     {
-        // Draw menu text
-        const char *msg = "PRESS START TO BEGIN 2D TEST";
-        int msg_width = strlen(msg) * 8;
-        int x = (VIDEO_WIDTH - msg_width) / 2;
-        int y = VIDEO_HEIGHT / 2 - 4;
-        draw_text_bg(x, y, msg, 0xFFFFFFFF);
+        case STATE_MENU:
+            // Draw menu text
+            msg = "PRESS START TO BEGIN SOFTWARE PERFORMANCE TEST";
+            msg_width = strlen(msg) * 8;
+            x = (VIDEO_WIDTH - msg_width) / 2;
+            y = VIDEO_HEIGHT / 2 - 4;
+            draw_text_bg(x, y, msg, 0xFFFFFFFF);
+            break;
+        case STATE_DEMO_HELIX:
+            render_helix(current_time);
+            draw_info();
+            break;
+        case STATE_DEMO_LASER:
+            render_laser(current_time);
+            draw_info();
+            break;
+        case STATE_DEMO_RADIAL_LINES:
+            render_radial_lines(current_time);
+            draw_info();
+            break;
+        case STATE_DEMO_NOISE:
+            render_noise(current_time);
+            draw_info();
+            break;
+        case STATE_DEMO_RESULTS:
+            // Draw menu text
+            draw_results();
+            break;
     }
-    else
+
+    if (current_state != STATE_MENU && 
+        current_state != STATE_DEMO_RESULTS && 
+        current_time >= DEMO_TIME)
     {
-        //render_helix(time);
-        //render_radial_lines(time);
-        //render_laser(time);
-        //render_noise(time);
-        // Draw multiple cell clusters
-        // Display on-screen info in top left
-        draw_text_bg(32, 32, fps_str, 0xFFFFFFFF);
-        draw_text_bg(32, 40, fps_avg_str, 0xFFFFFFFF);
-        draw_text_bg(32, 48, cpu_str, 0xFFFFFFFF);
-        draw_text_bg(32, 56, cpu_proc_str, 0xFFFFFFFF);
-        draw_text_bg(32, 64, temp_str, 0xFFFFFFFF);
+        reset_vars();
+        current_state++;
     }
 
     // Submit frame
@@ -236,63 +310,81 @@ void retro_run(void)
         perf.perf_stop(&frame_counter);
     uint64_t frame_end = perf.get_time_usec ? perf.get_time_usec() : 0;
 
-    // Update counters
-    current_frames++;
-
-    // Log every second
-    if (frame_end - last_log_time >= 1000000)
+    if (current_state != STATE_MENU && 
+        current_state != STATE_DEMO_RESULTS)
     {
-        warm_up_counter++;
+        // Update counters
+        fps++;
 
-        double current_fps = current_frames;
-        if (warm_up_counter > WARM_UP_FPS)
+        // Log every second
+        if (frame_end - last_log_time >= 1000000)
         {
-            avg_fps = avg_fps + current_frames;
-            avg_counter++;
-        }
+            warm_up_counter++;
+
+            if (warm_up_counter > WARM_UP_FPS)
+            {
+                avg_fps_counter++;
+                total_fps = total_fps + fps;
+            }
 
 #ifdef __linux__
-        // Update CPU usage
-        float cpu_usage = get_cpu_usage();
-        if (cpu_usage >= 0)
-        {
-            snprintf(cpu_str, sizeof(cpu_str), "CPU MULTI-CORE (%d): %d%%", get_cpu_core_count(), (int)cpu_usage);
-        }
-        float cpu_proc_usage = get_process_cpu_usage();
-        if (cpu_proc_usage >= 0)
-        {
-            snprintf(cpu_proc_str, sizeof(cpu_proc_str), "CPU SINGLE-CORE: %d%%", (int)cpu_proc_usage);
-        }
+            // Update CPU usage
+            avg_cpu_counter++;
 
-        // Update CPU temperature
-        float temp = get_cpu_temperature();
-        if (temp >= 0)
-        {
-            snprintf(temp_str, sizeof(temp_str), "CPU TEMPERATURE: %dC", (int)temp);
-        }
-        else
-        {
-            strncpy(temp_str, "CPU TEMPERATURE: ---C", sizeof(temp_str));
-        }
+            float cpu_multi_usage = get_cpu_usage();
+            total_multi_cpu = total_multi_cpu + cpu_multi_usage;
+            if (cpu_multi_usage >= 0)
+            {
+                snprintf(cpu_multi_str, sizeof(cpu_multi_str), "CPU MULTI-CORE (%d): %d%%", get_cpu_core_count(), (int)cpu_multi_usage);
+                unsigned avg_multi_cpu = (int)(total_multi_cpu / (double)avg_cpu_counter);
+                snprintf(cpu_multi_avg_str, sizeof(cpu_multi_avg_str), "AVERAGE CPU MULTI-CORE (%d): %d%%", get_cpu_core_count(), avg_multi_cpu);
+            }
+            float cpu_single_usage = get_process_cpu_usage();
+            total_single_cpu = total_single_cpu + cpu_single_usage;
+            if (cpu_single_usage >= 0)
+            {
+                snprintf(cpu_single_str, sizeof(cpu_single_str), "CPU SINGLE-CORE: %d%%", (int)cpu_single_usage);
+                unsigned avg_single_cpu = (int)(total_single_cpu / (double)avg_cpu_counter);
+                snprintf(cpu_single_avg_str, sizeof(cpu_single_avg_str), "AVERAGE CPU SINGLE-CORE: %d%%", avg_single_cpu);
+            }
+
+            // Update CPU temperature
+            float temp = get_cpu_temperature();
+            if (temp >= 0)
+            {
+                snprintf(temp_str, sizeof(temp_str), "CPU TEMPERATURE: %dC", (int)temp);
+            }
+            else
+            {
+                strncpy(temp_str, "CPU TEMPERATURE: ---C", sizeof(temp_str));
+            }
 #endif
 
-        // Update FPS display string
-        snprintf(fps_str, sizeof(fps_str), "REAL TIME FPS: %d", (int)current_fps);
-        snprintf(fps_avg_str, sizeof(fps_avg_str), "AVERAGE FPS: %d", (int)(avg_fps / (double)avg_counter));
+            // Update FPS display string
+            unsigned avg_fps = (int)(total_fps / (double)avg_fps_counter);
+            
+            snprintf(fps_str, sizeof(fps_str), "FRAMES PER SECOND (FPS): %d", (int)fps);
+            snprintf(fps_avg_str, sizeof(fps_avg_str), "AVERAGE FPS: %d", avg_fps);
 
-        if (perf.perf_log)
-            perf.perf_log();
+            if (perf.perf_log)
+                perf.perf_log();
 
-        log_cb(RETRO_LOG_INFO,
-               "FPS: %d, AVG: %d",
-               (int)current_fps,
-               (int)(avg_fps / (double)avg_counter));
+            log_cb(RETRO_LOG_INFO,
+                "%s | %s | %s | %s | %s | %s | %s",
+                fps_str,
+                cpu_multi_str,
+                cpu_single_str,
+                fps_avg_str,
+                cpu_multi_avg_str,
+                cpu_single_avg_str,
+                temp_str);
 
-        // Reset counters
-        last_log_time = frame_end;
-        current_frames = 0;
-        frame_counter.total = 0; // Reset performance counters
-        frame_counter.call_cnt = 0;
+            // Reset counters
+            last_log_time = frame_end;
+            fps = 0;
+            frame_counter.total = 0; // Reset performance counters
+            frame_counter.call_cnt = 0;
+        }
     }
 }
 

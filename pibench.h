@@ -23,10 +23,15 @@
 #define VIDEO_HEIGHT 480
 #define VIDEO_PIXELS VIDEO_WIDTH * VIDEO_HEIGHT
 #define WARM_UP_FPS 2      // Number of warm up frames
+#define DEMO_TIME 15
 
 typedef enum {
     STATE_MENU,
-    STATE_2D_TEST
+    STATE_DEMO_HELIX,
+    STATE_DEMO_LASER,
+    STATE_DEMO_RADIAL_LINES,
+    STATE_DEMO_NOISE,
+    STATE_DEMO_RESULTS
 } app_state_t;
 
 extern uint8_t *frame_buf;
